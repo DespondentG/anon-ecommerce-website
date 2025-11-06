@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
-        DOCKER_IMAGE = "despondentg/anon-ecommerce"
+        DOCKER_IMAGE = "pn2849/anon-ecommerce"
     }
 
     stages {
