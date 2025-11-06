@@ -38,7 +38,7 @@ pipeline {
             steps {
                 script {
                     sh """
-                        sudo k3s kubectl set image deployment/anon-web anon-web=${DOCKER_IMAGE}:latest -n anon
+                        sudo k3s kubectl set image deployment/anon-web nginx=${DOCKER_IMAGE}:latest -n anon
                         sudo k3s kubectl rollout restart deployment/anon-web -n anon
                     """
                 }
