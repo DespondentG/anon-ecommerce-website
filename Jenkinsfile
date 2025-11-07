@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
         DOCKER_IMAGE = "pn2849/anon-ecommerce"
+        NAMESPACE = "anon"
     }
 
     stages {
@@ -16,7 +16,12 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                    // Use Jenkins build number to create unique image tags
+                    IMAGE_TAG = "${BUILD_NUMBER}"
+                    sh """
+                        docker build -t ${DOCKER_IMAGE}:${IMAGE_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${IMAGE_TAG} ${DOCKER_IMAGE}:latest
+                    """
                 }
             }
         }
@@ -24,12 +29,13 @@ pipeline {
         stage('Push to DockerHub') {
             steps {
                 script {
-                    sh """
-                        echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
-                        docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
-                        docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest
-                        docker push ${DOCKER_IMAGE}:latest
-                    """
+                    withCredentials([usernamePassword(credentialsId: 'DOCKERHUB_CREDENTIALS', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh """
+                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                            docker push ${DOCKER_IMAGE}:${IMAGE_TAG}
+                            docker push ${DOCKER_IMAGE}:latest
+                        """
+                    }
                 }
             }
         }
@@ -37,9 +43,11 @@ pipeline {
         stage('Deploy to K3s') {
             steps {
                 script {
+                    // Automatically tell Kubernetes to use the new versioned image and restart deployment
                     sh """
-                        sudo k3s kubectl set image deployment/anon-web nginx=${DOCKER_IMAGE}:latest -n anon
-                        sudo k3s kubectl rollout restart deployment/anon-web -n anon
+                        sudo k3s kubectl set image deployment/anon-web nginx=${DOCKER_IMAGE}:${IMAGE_TAG} -n ${NAMESPACE}
+                        sudo k3s kubectl rollout restart deployment/anon-web -n ${NAMESPACE}
+                        sudo k3s kubectl rollout status deployment/anon-web -n ${NAMESPACE}
                     """
                 }
             }
@@ -48,10 +56,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Deployment successful! Your site is updated and live."
+            echo "✅ Deployment successful! Version ${BUILD_NUMBER} is live."
         }
         failure {
-            echo "❌ Build or deployment failed. Check logs."
+            echo "❌ Build or deployment failed. Check Jenkins logs for details."
         }
     }
 }
